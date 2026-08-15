@@ -1,0 +1,90 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # Runs first and independently of the build: a clean-room violation should
+  # fail fast and be unmissable, not be buried under compiler output.
+  forbidden-strings:
+    name: forbidden strings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: a string removed from HEAD is still in the repository.
+          fetch-depth: 0
+
+      # This file is excluded from both scans for the obvious reason that it
+      # contains the pattern it is searching for. It is the only exclusion, and
+      # it is a path exclusion rather than a directory one, so a forbidden
+      # string in any other workflow still fails the build.
+      - name: Scan the working tree
+        run: |
+          if grep -rniE 'qia|wro-|10\.100\.' \
+               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj \
+               --exclude=ci.yml \
+               . ; then
+            echo "::error::Forbidden string found in the working tree."
+            exit 1
+          fi
+          echo "Working tree clean."
+
+      - name: Scan every blob in every commit
+        run: |
+          if git grep -inE 'qia|wro-|10\.100\.' $(git rev-list --all) -- ':!.github/workflows/ci.yml' ; then
+            echo "::error::Forbidden string found in git history."
+            exit 1
+          fi
+          echo "History clean."
+
+      - name: Assert no private package feed
+        run: |
+          if find . -iname 'nuget.config' -not -path './.git/*' | grep . ; then
+            echo "::error::A NuGet.config exists. This repository restores from nuget.org only."
+            exit 1
+          fi
+          echo "No NuGet.config, as intended."
+
+  build:
+    name: build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # A restore that succeeds on a clean runner with no NuGet.config is the
+      # proof that every dependency is publicly available.
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test -c Release --no-build --verbosity normal
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      # Proves the compose file and Dockerfile have not rotted. Nothing is
+      # pushed anywhere.
+      - name: Build images
+        run: docker compose build
+
+      - name: Validate compose file
+        run: docker compose config --quiet

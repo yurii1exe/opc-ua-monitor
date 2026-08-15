@@ -1,0 +1,67 @@
+name: opc-ua-monitor
+
+services:
+
+  # OPC UA server. The OPC Foundation's own reference server, so the address
+  # space is the canonical one and nothing has to be installed or signed up for.
+  simulator:
+    image: ghcr.io/opcfoundation/uanetstandard/refserver:latest
+    # This is the important line, and the reason it is called out here rather
+    # than left to Docker's default.
+    #
+    # An OPC UA server builds the endpoint URLs it advertises from its own
+    # hostname (Part 4, GetEndpoints). Docker's default hostname is the random
+    # container id, so the server would advertise something like
+    # opc.tcp://4f3c1a2b9d7e:62541 — a name that resolves nowhere. Pinning the
+    # hostname to the service name means the advertised URL matches the URL the
+    # API is configured with, and the two agree.
+    #
+    # The client also defends itself against this independently, via
+    # Opc__PreserveRequestedEndpointUrl, because a server on someone else's
+    # infrastructure will not have had this line applied to it.
+    hostname: simulator
+    container_name: opcmonitor-simulator
+    restart: unless-stopped
+    networks:
+      - opcmonitor-net
+    ports:
+      # Published so opcprobe can be run from the host against the same server.
+      - "62541:62541"
+
+  api:
+    build:
+      # Repository root: the Dockerfile needs Directory.Build.props.
+      context: .
+      dockerfile: src/OpcMonitor.Api/Dockerfile
+    container_name: opcmonitor-api
+    restart: unless-stopped
+    depends_on:
+      # Start order only. There is intentionally no wait-for-healthy here: the
+      # API's reconnect loop already handles a server that is absent, slow to
+      # start, or restarted later, and making startup depend on the simulator
+      # would hide whether that loop actually works.
+      - simulator
+    environment:
+      # Service name, matching the simulator's hostname above.
+      Opc__EndpointUrl: opc.tcp://simulator:62541
+      # Development-only. The simulator's self-signed certificate is not in this
+      # client's trust store on a fresh clone, and requiring a manual
+      # certificate exchange before anything works would defeat the point of a
+      # one-command demo. Every acceptance is logged with its thumbprint.
+      Opc__AcceptUntrustedServerCertificate: "true"
+      ASPNETCORE_ENVIRONMENT: Production
+    networks:
+      - opcmonitor-net
+    ports:
+      - "8080:8080"
+    volumes:
+      # Keeps the client's application instance certificate across restarts.
+      - opcmonitor-pki:/var/opt/opcmonitor/pki
+
+networks:
+  opcmonitor-net:
+    name: opcmonitor-net
+
+volumes:
+  opcmonitor-pki:
+    name: opcmonitor-pki

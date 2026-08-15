@@ -1,0 +1,27 @@
+<Project>
+
+  <!--
+    Exact-version pins. No floating versions, no wildcards, one public feed
+    (nuget.org, the SDK default). The OPC UA packages are the narrow client
+    packages rather than the meta-package, so the dependency surface stays
+    small and obvious.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.378.156" />
+    <PackageVersion Include="OPCFoundation.NetStandard.Opc.Ua.Configuration" Version="1.5.378.156" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,240 @@
+# opc-ua-monitor
+
+Real-time monitoring for industrial OPC UA servers. A .NET 8 service subscribes
+to nodes on an OPC UA server and streams value changes over SignalR to a live
+dashboard. It handles the parts that make OPC UA awkward in practice:
+application certificate trust, endpoint advertisement inside containers, session
+reconnection with automatic resubscription, and data-change subscriptions
+instead of polling.
+
+It ships with the OPC Foundation reference server in Docker Compose, so
+`docker compose up` gives you a working stack against a real OPC UA server with
+nothing else to install.
+
+> **Status.** The service, the streaming pipeline and the container setup are
+> built and tested. The Angular dashboard is next — until then the live data is
+> visible over REST, over the SignalR hub, and through the bundled `opcprobe`
+> command-line tool.
+
+---
+
+## Quickstart
+
+```bash
+git clone https://github.com/<you>/opc-ua-monitor
+cd opc-ua-monitor
+docker compose up --build
+```
+
+Then:
+
+```bash
+curl http://localhost:8080/health          # OPC session state, not just liveness
+curl http://localhost:8080/api/nodes       # every monitored node, current value + window
+curl http://localhost:8080/api/connection  # connection state and reconnect attempt
+```
+
+The SignalR hub is at `http://localhost:8080/hubs/monitoring`.
+
+Prerequisite: Docker. Nothing else.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    S["OPC UA server<br/>(reference server)"]
+    I["OpcMonitor.Infrastructure<br/>session · subscription · reconnect"]
+    D["OpcMonitor.Domain<br/>readings · rolling window"]
+    A["OpcMonitor.Api<br/>minimal API + SignalR hub"]
+    W["Dashboard<br/>(browser)"]
+
+    S -- "data change<br/>notifications" --> I
+    I -- "readings" --> D
+    D --> A
+    A -- "SignalR" --> W
+```
+
+Data flows one way. `OpcMonitor.Domain` has no package references at all;
+`OpcMonitor.Infrastructure` is the only project that knows OPC UA exists;
+`OpcMonitor.Api` knows about HTTP and SignalR but nothing about the protocol.
+
+---
+
+## How it works
+
+- **Subscriptions, not polling.** The server samples each node and pushes only
+  changes, so traffic scales with how often values move rather than with how
+  many nodes are watched. An optional absolute deadband suppresses noise on
+  analogue signals server-side.
+
+- **Reconnect with backoff, jitter and resubscribe.** When the session drops,
+  the client rebuilds session, node resolution and subscription from scratch on
+  an exponential backoff with symmetric jitter. One path, always exercised —
+  rather than a subscription-transfer fast path plus a rebuild fallback that is
+  the least-tested code in the system.
+
+- **Current values on resubscribe.** A data-change subscription reports changes,
+  so a node that is stable when you attach reports nothing until it happens to
+  move. Every subscribe is followed by an explicit read of all monitored nodes,
+  so the dashboard is populated within a second of connecting — on first start
+  and after every reconnect.
+
+- **Snapshot on connect.** The hub sends a browser its full state — nodes,
+  current values, rolling window, connection status — the moment it connects, so
+  the first paint is never empty.
+
+- **The container endpoint trap, handled twice.** An OPC UA server advertises
+  endpoint URLs built from its own hostname. In Compose that is the container
+  id, which resolves nowhere. The compose file pins the simulator's `hostname:`
+  to match, *and* the client keeps the host and port it actually connected to
+  rather than the advertised one — because a server you do not control will not
+  have had the first fix applied. See `EndpointUrlRewriter`.
+
+- **Certificate trust is explicit.** A self-signed application instance
+  certificate is generated on first run into a gitignored `pki/` directory.
+  Accepting an untrusted server certificate is an opt-in flag, on in the compose
+  profile, and every acceptance is logged as a warning with the certificate's
+  subject and thumbprint.
+
+- **Subscription lifetimes are computed, not guessed.** The lifetime count is
+  raised to satisfy both the spec's three-keep-alive minimum and the session
+  timeout, which is a common way a client appears to work and then quietly stops
+  delivering.
+
+- **No database.** An in-memory bounded window per node is enough for a live
+  monitor, and an OPC UA server's own historical access does long-term storage
+  better than a bolted-on table would.
+
+- **Health means connected.** `/health` reports the OPC session state, so a
+  container healthcheck on it is meaningful. Reconnecting is reported as
+  degraded rather than unhealthy — restarting a container mid-backoff makes
+  recovery slower, not faster.
+
+---
+
+## Pointing it at a different server
+
+The endpoint is configuration. Three profiles ship with the API:
+
+| Profile | Endpoint | Use |
+|---|---|---|
+| default (`appsettings.json`) | `opc.tcp://simulator:62541` | Docker Compose |
+| `Local` | `opc.tcp://localhost:62541` | API on the host, simulator in Docker |
+| `Remote` | `opc.tcp://opcuademo.sterfive.com:26543` | public demo server, no Docker at all |
+
+```bash
+dotnet run --project src/OpcMonitor.Api --environment Remote
+```
+
+Or override anything without touching a file:
+
+```bash
+Opc__EndpointUrl=opc.tcp://192.0.2.10:4840 dotnet run --project src/OpcMonitor.Api
+```
+
+The `Remote` profile talks to a public server on the internet: it needs outbound
+TCP 26543, it can be down or busy, and it only offers an unsecured endpoint. The
+Compose profile is the supported path; `Remote` exists to show that nothing is
+compiled in.
+
+### Choosing which nodes to watch
+
+Nodes are configured under `Opc:Nodes`, and each address is either a node id or
+a browse path:
+
+```json
+{ "Address": "i=2258",                            "DisplayName": "Server time" }
+{ "Address": "Server/ServerStatus/CurrentTime",   "DisplayName": "Server time" }
+{ "Address": "Tank/TankLevel", "Unit": "m", "Minimum": 0, "Maximum": 1 }
+```
+
+Browse paths are resolved against the live server at startup. They are worth
+preferring because namespace indices are assigned per server, so an
+`ns=2;s=Something` copied from one server does not necessarily mean the same
+thing on another. Nodes that do not resolve are skipped with a warning unless
+marked `"Required": true`, so one config can list nodes for several servers.
+
+The defaults use only nodes that OPC UA requires every compliant server to
+expose, so the demo shows live data whatever you point it at.
+
+---
+
+## Finding out what a server actually exposes
+
+`opcprobe` is a small command-line tool that connects, prints the endpoint and
+security it negotiated, dumps the address space with live values, and can tail a
+subscription. When the dashboard is blank, this tells you in ten seconds whether
+the problem is OPC UA or everything downstream of it.
+
+```bash
+dotnet run --project tools/OpcMonitor.Probe -- \
+  --endpoint opc.tcp://localhost:62541 --depth 3
+
+dotnet run --project tools/OpcMonitor.Probe -- \
+  --endpoint opc.tcp://localhost:62541 --watch 15
+```
+
+```
+Connected.
+  server        urn:example:SomeServer
+  endpoint used opc.tcp://localhost:62541/
+  security      SignAndEncrypt / Basic256Sha256
+  namespaces    3
+
+Address space:
+  Server                       i=2253
+    ServiceLevel                 i=2267    = 255
+  Tank                         ns=1;i=1755
+    TankLevel                    ns=1;i=1756 = 0.19186964722980
+```
+
+It uses the same session, resolver and subscription code as the service, so a
+result here is evidence about the real pipeline rather than about a parallel
+implementation written for the tool.
+
+---
+
+## Project layout
+
+```
+src/OpcMonitor.Domain           readings, quality, rolling window — zero package references
+src/OpcMonitor.Infrastructure   the only project referencing the OPC UA SDK
+src/OpcMonitor.Api              .NET 8 minimal API, SignalR hub, hosted service
+tools/OpcMonitor.Probe          command-line diagnostic client
+tests/OpcMonitor.Tests          domain, endpoint policy, reconnect policy, mapping
+```
+
+There is no `NuGet.config` in this repository, deliberately. Everything restores
+from nuget.org, and CI proves it on a clean runner.
+
+---
+
+## Development
+
+```bash
+dotnet build -c Release
+dotnet test
+
+# run the API against the public demo server, no Docker needed
+dotnet run --project src/OpcMonitor.Api --environment Remote
+```
+
+Requires the .NET 8 SDK. `pki/` is generated on first run and is gitignored —
+application instance certificates embed the machine's hostname in their subject
+alternative names and do not belong in version control.
+
+CI runs on every push: a forbidden-strings scan over the working tree and the
+full history, restore, build, test, and a `docker compose build`.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Built on the OPC Foundation's [UA-.NETStandard](https://github.com/OPCFoundation/UA-.NETStandard)
+client SDK (`OPCFoundation.NetStandard.Opc.Ua.Client` and
+`.Configuration`), used under its own license. The bundled simulator is the OPC
+Foundation reference server container image.

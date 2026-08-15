@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Deliberately empty of package references. The domain model does not know
+    that OPC UA, SignalR, or ASP.NET Core exist. If a PackageReference ever
+    appears in this file, a layering rule has been broken.
+  -->
+
+</Project>

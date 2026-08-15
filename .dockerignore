@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/pki/
+**/node_modules/
+**/dist/
+**/.angular/
+.git/
+.github/
+.vs/
+.idea/
+artifacts/
+TestResults/
+**/*.user
+BUILD-PLAN.md

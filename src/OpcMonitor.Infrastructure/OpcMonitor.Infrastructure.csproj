@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpcMonitor.Domain\OpcMonitor.Domain.csproj" />
+  </ItemGroup>
+
+  <!--
+    Endpoint selection and subscription-lifetime arithmetic are internal because
+    they are not part of this library's contract, but they are precisely the
+    parts worth testing directly rather than through a live server.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpcMonitor.Tests" />
+  </ItemGroup>
+
+  <!--
+    The only project in the solution that references the OPC UA SDK. Both
+    packages come from nuget.org and are pinned in Directory.Packages.props.
+  -->
+  <ItemGroup>
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+  </ItemGroup>
+
+</Project>

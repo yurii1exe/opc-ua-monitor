@@ -1,0 +1,40 @@
+# Working notes — must never be committed
+BUILD-PLAN.md
+
+# OPC UA application instance PKI.
+# Generated on first run. Never committed: certificates embed the machine
+# hostname in their subject alternative names.
+pki/
+**/pki/
+
+# Local-only configuration overrides.
+# Deliberately narrow: a broad "*.local.json" also matches the committed
+# appsettings.Local.json profile on case-insensitive filesystems, which silently
+# leaves that profile out of the repository.
+appsettings.*.local.json
+appsettings.local.overrides.json
+
+# .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+TestResults/
+.vs/
+
+# Node / Angular (milestone 2)
+node_modules/
+dist/
+.angular/
+
+# Editors / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
