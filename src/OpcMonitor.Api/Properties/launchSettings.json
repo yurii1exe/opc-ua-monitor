@@ -1,0 +1,19 @@
+{
+  "//": [
+    "Read by `dotnet run` only. It is not part of a publish output, so the",
+    "container keeps its own ASPNETCORE_HTTP_PORTS and this file has no say",
+    "there. It exists so the no-Docker path listens on the same 8080 as the",
+    "container: that is the port the curl examples use and the port the",
+    "dashboard's dev server targets (web/src/app/core/api-base.ts).",
+    "",
+    "No ASPNETCORE_ENVIRONMENT here on purpose — the environment is chosen per",
+    "run, e.g. ASPNETCORE_ENVIRONMENT=Remote dotnet run --project src/OpcMonitor.Api"
+  ],
+  "profiles": {
+    "OpcMonitor.Api": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:8080",
+      "dotnetRunMessages": true
+    }
+  }
+}

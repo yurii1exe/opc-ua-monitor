@@ -323,6 +323,11 @@ The dev server runs on port 4200 and the API on 8080, which are different
 origins — the API's CORS policy allows both loopback spellings of `:4200` and
 nothing else by default. Set `Cors:AllowedOrigins` to change that.
 
+The API's port comes from `src/OpcMonitor.Api/Properties/launchSettings.json`
+under `dotnet run`, and from `ASPNETCORE_HTTP_PORTS` in the container. Both say
+8080, which is also what the dashboard assumes when it is served from the dev
+server on 4200 (`web/src/app/core/api-base.ts`).
+
 `pki/` is generated on first run and is gitignored. Application instance
 certificates embed a hostname in their subject alternative names, and this one is
 pinned to `localhost` in configuration precisely so that it is not the machine's:
