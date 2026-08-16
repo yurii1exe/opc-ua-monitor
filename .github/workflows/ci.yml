@@ -11,49 +11,51 @@ permissions:
 
 jobs:
 
-  # Runs first and independently of the build: a clean-room violation should
-  # fail fast and be unmissable, not be buried under compiler output.
-  forbidden-strings:
-    name: forbidden strings
+  secret-scan:
+    name: secret scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history: a string removed from HEAD is still in the repository.
+          # Full history: credential material deleted from HEAD is still in the
+          # object database and still reachable.
           fetch-depth: 0
 
-      # This file is excluded from both scans for the obvious reason that it
-      # contains the pattern it is searching for. It is the only exclusion, and
-      # it is a path exclusion rather than a directory one, so a forbidden
-      # string in any other workflow still fails the build.
-      #
-      # `-I` skips binary files, and that is deliberate rather than a loophole.
-      # A three-letter pattern will occur by chance in any large compressed blob
-      # — the screenshots in docs/ each contain a stray "qiA" inside their
-      # DEFLATE stream — and a scan that cries wolf on every commit is a scan
-      # people learn to override. Binaries in this repository are screenshots
-      # and a GIF, and the control for those is looking at them, which is the
-      # only control that works on a rendered frame anyway. No certificate,
-      # archive or other opaque artefact is committed here; pki/ is gitignored.
-      - name: Scan the working tree
+      # Both scans read tracked files only, so anything the .gitignore keeps out
+      # of the repository is out of scope here as well. `-I` skips binary blobs,
+      # whose only meaningful review is opening them; the binaries here are
+      # screenshots and a GIF.
+      - name: Scan tracked files for credential material
         run: |
-          if grep -rnIiE 'qia|wro-|10\.100\.' \
-               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj \
-               --exclude-dir=dist --exclude-dir=.angular \
-               --exclude=ci.yml \
-               . ; then
-            echo "::error::Forbidden string found in the working tree."
+          if git grep -I -inE "$SECRET_PATTERN" -- . ; then
+            echo "::error::Possible credential material in the working tree."
             exit 1
           fi
           echo "Working tree clean."
+        env:
+          SECRET_PATTERN: >-
+            BEGIN [A-Z ]*PRIVATE KEY|(password|passwd|pwd|secret|api[-_]?key|access[-_]?key|auth[-_]?token|connection[-_]?string)[[:space:]]*[=:][[:space:]]*.?[A-Za-z0-9/+=_.-]{8,}
 
       - name: Scan every blob in every commit
         run: |
-          if git grep -I -inE 'qia|wro-|10\.100\.' $(git rev-list --all) -- ':!.github/workflows/ci.yml' ; then
-            echo "::error::Forbidden string found in git history."
+          if git grep -I -inE "$SECRET_PATTERN" $(git rev-list --all) ; then
+            echo "::error::Possible credential material in git history."
             exit 1
           fi
           echo "History clean."
+        env:
+          SECRET_PATTERN: >-
+            BEGIN [A-Z ]*PRIVATE KEY|(password|passwd|pwd|secret|api[-_]?key|access[-_]?key|auth[-_]?token|connection[-_]?string)[[:space:]]*[=:][[:space:]]*.?[A-Za-z0-9/+=_.-]{8,}
+
+      # Key and keystore extensions have no business being tracked: the
+      # application instance certificate is generated on first run.
+      - name: Assert no key material is tracked
+        run: |
+          if git ls-files | grep -iE '\.(pfx|p12|pem|key|jks|keystore)$' ; then
+            echo "::error::Key material is tracked in this repository."
+            exit 1
+          fi
+          echo "No tracked key material, as intended."
 
       - name: Assert no private package feed
         run: |

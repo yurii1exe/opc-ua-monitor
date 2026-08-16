@@ -327,9 +327,9 @@ pinned to `localhost` in configuration precisely so that it is not the machine's
 `Opc:CertificateDomainNames` and `Opc:ApplicationUri` are both set explicitly
 rather than left to the SDK, which fills them from `Dns.GetHostName()`.
 
-CI runs on every push: a forbidden-strings scan over the working tree and the
-full history, restore, build, test, an `npm ci && npm run build` of the
-dashboard, and a `docker compose build`.
+CI runs on pushes to `main`, on every pull request, and on demand: a secret scan
+over the working tree and the full history, restore, build, test, an
+`npm ci && npm run build` of the dashboard, and a `docker compose build`.
 
 ---
 
