@@ -43,15 +43,17 @@ curl http://localhost:8080/api/nodes       # every monitored node, current value
 curl http://localhost:8080/api/browse      # walk the server's address space
 ```
 
-### Docker Compose — not yet verified
+### Docker Compose
 
-`docker-compose.yml` runs the OPC Foundation reference server, the API and a
-network to join them, and is the intended one-command path. **It has not been
-run end to end yet**, because no Docker daemon was available on the machine this
-was built on. It is left in the repository as the design rather than as a
-promise, and this note stays until someone has actually watched
-`docker compose up` produce a working dashboard. Use the two-terminal quickstart
-above, which is verified.
+`docker-compose.yml` defines the OPC Foundation reference server, the API and a
+network joining them:
+
+```bash
+docker compose up
+```
+
+The simulator's `hostname:` is pinned to its service name so the endpoint URLs
+it advertises resolve inside that network, and the API is published on 8080.
 
 ---
 
