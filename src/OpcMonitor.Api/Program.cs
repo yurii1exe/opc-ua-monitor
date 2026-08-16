@@ -87,6 +87,105 @@ api.MapGet("/connection", (ResilientOpcClient client) =>
         ConnectionStatusDto.From(client.Status))
     .WithName("GetConnectionStatus");
 
+// Browsing needs the live session rather than the snapshot store, because the
+// point is to find nodes that are *not* being monitored yet.
+api.MapGet("/browse", async (
+        string? nodeId,
+        ResilientOpcClient client,
+        OpcBrowseService browser,
+        NodeSnapshotStore store,
+        CancellationToken cancellationToken) =>
+    {
+        var session = client.CurrentSession;
+        if (session is null)
+        {
+            return Results.Problem(
+                title: "Not connected",
+                detail: "There is no live OPC UA session to browse. Retry once the connection recovers.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        // A node id is the natural key here, but the store is keyed by the
+        // configured address — which for a browse-path node is not the node id.
+        // Both forms are checked so an already-monitored node is marked as such
+        // however it was originally configured.
+        var monitored = store.Snapshot().Select(s => s.Node.Id).ToHashSet(StringComparer.Ordinal);
+
+        try
+        {
+            var result = await browser.BrowseAsync(session, nodeId, cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(new BrowseResultDto(
+                result.NodeId,
+                result.Children.Select(c => new BrowsedNodeDto(
+                    c.NodeId, c.BrowseName, c.DisplayName, c.NodeClass, c.IsVariable, c.HasChildren,
+                    monitored.Contains(c.NodeId), c.DataType, c.DisplayValue, c.Quality)).ToList()));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Results.Problem(
+                title: "Browse failed",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+    })
+    .WithName("BrowseAddressSpace")
+    .WithSummary("Hierarchical children of a node, with current values. Omit nodeId for the Objects folder.");
+
+api.MapPost("/nodes", async (
+        SubscribeRequest request,
+        NodeSubscriptionManager manager,
+        CancellationToken cancellationToken) =>
+    {
+        var result = await manager.SubscribeAsync(new MonitoredNodeOptions
+        {
+            Address = request.Address,
+            DisplayName = request.DisplayName,
+            Unit = request.Unit,
+            Minimum = request.Minimum,
+            Maximum = request.Maximum
+        }, cancellationToken).ConfigureAwait(false);
+
+        return result.Outcome switch
+        {
+            NodeChangeOutcome.Changed => Results.Created(
+                $"/api/nodes/{Uri.EscapeDataString(result.Node!.Id)}",
+                MonitoredNodeDto.From(result.Node)),
+
+            NodeChangeOutcome.NoChange => result.Node is null
+                ? Results.NoContent()
+                : Results.Ok(MonitoredNodeDto.From(result.Node)),
+
+            NodeChangeOutcome.NotFound => Results.Problem(
+                title: "Node not found", detail: result.Detail, statusCode: StatusCodes.Status404NotFound),
+
+            NodeChangeOutcome.NotConnected => Results.Problem(
+                title: "Not connected", detail: result.Detail, statusCode: StatusCodes.Status503ServiceUnavailable),
+
+            _ => Results.Problem(
+                title: "Server rejected the node", detail: result.Detail, statusCode: StatusCodes.Status502BadGateway)
+        };
+    })
+    .WithName("SubscribeToNode")
+    .WithSummary("Starts monitoring a node. Survives reconnects for the lifetime of the process.");
+
+api.MapDelete("/nodes/{*id}", async (
+        string id,
+        NodeSubscriptionManager manager,
+        CancellationToken cancellationToken) =>
+    {
+        var result = await manager
+            .UnsubscribeAsync(Uri.UnescapeDataString(id), cancellationToken)
+            .ConfigureAwait(false);
+
+        // Unsubscribing from something that is not subscribed has already
+        // achieved what the caller wanted, so it is not an error.
+        return result.Outcome is NodeChangeOutcome.Changed or NodeChangeOutcome.NoChange
+            ? Results.NoContent()
+            : Results.Problem(title: "Could not unsubscribe", detail: result.Detail, statusCode: 500);
+    })
+    .WithName("UnsubscribeFromNode");
+
 // Health reports the OPC session state, not just process liveness, so a
 // container healthcheck on this endpoint means something.
 app.MapHealthChecks("/health", new HealthCheckOptions

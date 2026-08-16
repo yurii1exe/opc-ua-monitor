@@ -1,42 +1,94 @@
 # opc-ua-monitor
 
 Real-time monitoring for industrial OPC UA servers. A .NET 8 service subscribes
-to nodes on an OPC UA server and streams value changes over SignalR to a live
-dashboard. It handles the parts that make OPC UA awkward in practice:
-application certificate trust, endpoint advertisement inside containers, session
-reconnection with automatic resubscription, and data-change subscriptions
-instead of polling.
+to nodes on an OPC UA server and streams value changes over SignalR to an Angular
+dashboard that updates live. It handles the parts that make OPC UA awkward in
+practice: application certificate trust, endpoint advertisement inside
+containers, session reconnection with automatic resubscription, and data-change
+subscriptions instead of polling.
 
-It ships with the OPC Foundation reference server in Docker Compose, so
-`docker compose up` gives you a working stack against a real OPC UA server with
-nothing else to install.
+![Live values updating](docs/live.gif)
 
-> **Status.** The service, the streaming pipeline and the container setup are
-> built and tested. The Angular dashboard is next — until then the live data is
-> visible over REST, over the SignalR hub, and through the bundled `opcprobe`
-> command-line tool.
+![The dashboard](docs/dashboard.png)
 
 ---
 
-## Quickstart
+## Quickstart — no Docker, against a public server
+
+Two terminals, and it runs against a public OPC UA demo server on the internet,
+so there is nothing to install beyond the two SDKs.
 
 ```bash
 git clone https://github.com/<you>/opc-ua-monitor
 cd opc-ua-monitor
-docker compose up --build
+
+# terminal 1 — the service
+dotnet run --project src/OpcMonitor.Api --environment Remote
+
+# terminal 2 — the dashboard
+cd web && npm ci && npm start
 ```
 
-Then:
+Then open <http://localhost:4200>.
+
+Requires the .NET 8 SDK and Node 20+. The `Remote` profile talks to
+`opc.tcp://opcuademo.sterfive.com:26543`, so it needs outbound TCP 26543 — and
+because it is somebody else's server, it can be down or busy.
+
+The API alone is usable without the dashboard:
 
 ```bash
 curl http://localhost:8080/health          # OPC session state, not just liveness
 curl http://localhost:8080/api/nodes       # every monitored node, current value + window
-curl http://localhost:8080/api/connection  # connection state and reconnect attempt
+curl http://localhost:8080/api/browse      # walk the server's address space
 ```
 
-The SignalR hub is at `http://localhost:8080/hubs/monitoring`.
+### Docker Compose — not yet verified
 
-Prerequisite: Docker. Nothing else.
+`docker-compose.yml` runs the OPC Foundation reference server, the API and a
+network to join them, and is the intended one-command path. **It has not been
+run end to end yet**, because no Docker daemon was available on the machine this
+was built on. It is left in the repository as the design rather than as a
+promise, and this note stays until someone has actually watched
+`docker compose up` produce a working dashboard. Use the two-terminal quickstart
+above, which is verified.
+
+---
+
+## The dashboard
+
+Dense on purpose, and dark because it is meant to sit on a screen someone
+glances at rather than reads.
+
+The OPC session dropped — attempt, elapsed time, the server's own error and a
+live countdown to the next retry:
+
+![Reconnecting, with the backoff visible](docs/reconnecting.png)
+
+The dashboard's own socket dropped, which is a different failure with a
+different remedy. The values are held rather than blanked, and labelled as held:
+
+![Dashboard link lost](docs/link-lost.png)
+
+- **Live value per node**, with its engineering unit, its source timestamp to the
+  millisecond, and how long ago that was. Values are monospaced and
+  tabular-figured so digits do not jitter as they change, and the type size steps
+  down for long values rather than clipping them.
+- **A trend chart per node**, plus a larger one for the selected node. Charts
+  autoscale to the data, shade the configured band behind it, and break the line
+  across gaps instead of drawing through them.
+- **Two connection states, both stated.** The browser's socket to the API and the
+  API's session to the OPC server are separate things that fail separately, so
+  the header shows both. During a reconnect the attempt number, the elapsed
+  time, the server's own error text and a countdown to the next retry are all on
+  screen — the backoff is the interesting part and it is not hidden behind a
+  spinner.
+- **Address-space browsing**, one level at a time, with each level's current
+  values read as it is fetched. Press `+` on a variable to start monitoring it
+  and `−` to stop; both take effect immediately and survive a reconnect.
+- **Quiet, not stale.** A node that has not changed in two minutes is flagged as
+  quiet rather than broken, because a data-change subscription reporting nothing
+  about a constant tag is correct behaviour, not a fault.
 
 ---
 
@@ -58,7 +110,18 @@ flowchart LR
 
 Data flows one way. `OpcMonitor.Domain` has no package references at all;
 `OpcMonitor.Infrastructure` is the only project that knows OPC UA exists;
-`OpcMonitor.Api` knows about HTTP and SignalR but nothing about the protocol.
+`OpcMonitor.Api` knows about HTTP and SignalR but nothing about the protocol;
+`web` knows only the wire contract.
+
+The hub pushes four messages, and the browser mirrors them in
+`web/src/app/core/api.types.ts`:
+
+| Message | Carries |
+|---|---|
+| `SnapshotReceived` | Everything: nodes, current values, windows, connection state. Sent on connect. |
+| `ReadingsUpdated` | A batch of value changes, coalesced over a 100 ms window. |
+| `ConnectionStateChanged` | OPC session state, reconnect attempt and the reason. |
+| `NodesChanged` | The monitored node set, after a subscribe, unsubscribe or reconnect. |
 
 ---
 
@@ -112,6 +175,18 @@ Data flows one way. `OpcMonitor.Domain` has no package references at all;
   degraded rather than unhealthy — restarting a container mid-backoff makes
   recovery slower, not faster.
 
+- **Nodes can be added and dropped at runtime.** A node subscribed from the
+  dashboard is attached to the existing subscription rather than triggering a
+  rebuild, and it is held in a registry that the reconnect path resolves from —
+  so it comes back after a dropped session instead of quietly vanishing. The
+  registry is in memory only: a restart returns to the configured set, because a
+  dashboard experiment should not become permanent state.
+
+- **Browsing is lazy and reads as it goes.** `GET /api/browse` returns one level
+  of the address space with the current value of every variable on it, in one
+  batched read. Finding a tag is only half the problem; knowing which of six
+  similar names is the live one is the other half.
+
 ---
 
 ## Pointing it at a different server
@@ -135,9 +210,19 @@ Opc__EndpointUrl=opc.tcp://192.0.2.10:4840 dotnet run --project src/OpcMonitor.A
 ```
 
 The `Remote` profile talks to a public server on the internet: it needs outbound
-TCP 26543, it can be down or busy, and it only offers an unsecured endpoint. The
-Compose profile is the supported path; `Remote` exists to show that nothing is
-compiled in.
+TCP 26543, it can be down or busy, and it only offers an unsecured endpoint. It
+is the profile everything here has actually been verified against.
+
+The dashboard's own idea of where the API is follows the same principle. It is
+read at runtime from one line of `index.html`:
+
+```html
+<meta name="opc-api-base" content="http://api.example.internal:8080" />
+```
+
+Left empty it uses the origin the page came from, which is the right answer when
+a reverse proxy fronts both. Nothing about the endpoint is compiled into the
+bundle either.
 
 ### Choosing which nodes to watch
 
@@ -202,9 +287,15 @@ implementation written for the tool.
 src/OpcMonitor.Domain           readings, quality, rolling window — zero package references
 src/OpcMonitor.Infrastructure   the only project referencing the OPC UA SDK
 src/OpcMonitor.Api              .NET 8 minimal API, SignalR hub, hosted service
+web                             Angular 20 dashboard, standalone + signals, zoneless
 tools/OpcMonitor.Probe          command-line diagnostic client
 tests/OpcMonitor.Tests          domain, endpoint policy, reconnect policy, mapping
 ```
+
+The dashboard has three dependencies in total: Angular, `@microsoft/signalr` and
+`rxjs`. There is no chart library — the trend plots are hand-drawn SVG, which is
+a smaller thing to own than a charting dependency used for exactly one chart
+type, and it renders identically at every size the same geometry is reused at.
 
 There is no `NuGet.config` in this repository, deliberately. Everything restores
 from nuget.org, and CI proves it on a clean runner.
@@ -219,14 +310,26 @@ dotnet test
 
 # run the API against the public demo server, no Docker needed
 dotnet run --project src/OpcMonitor.Api --environment Remote
+
+# the dashboard, with live reload
+cd web && npm ci && npm start
 ```
 
-Requires the .NET 8 SDK. `pki/` is generated on first run and is gitignored —
-application instance certificates embed the machine's hostname in their subject
-alternative names and do not belong in version control.
+Requires the .NET 8 SDK and Node 20+.
+
+The dev server runs on port 4200 and the API on 8080, which are different
+origins — the API's CORS policy allows both loopback spellings of `:4200` and
+nothing else by default. Set `Cors:AllowedOrigins` to change that.
+
+`pki/` is generated on first run and is gitignored. Application instance
+certificates embed a hostname in their subject alternative names, and this one is
+pinned to `localhost` in configuration precisely so that it is not the machine's:
+`Opc:CertificateDomainNames` and `Opc:ApplicationUri` are both set explicitly
+rather than left to the SDK, which fills them from `Dns.GetHostName()`.
 
 CI runs on every push: a forbidden-strings scan over the working tree and the
-full history, restore, build, test, and a `docker compose build`.
+full history, restore, build, test, an `npm ci && npm run build` of the
+dashboard, and a `docker compose build`.
 
 ---
 

@@ -1,0 +1,229 @@
+:host {
+  display: block;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.bar {
+  --state: var(--muted);
+
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  height: 38px;
+}
+
+.bar.connected {
+  --state: var(--good);
+}
+
+.bar.reconnecting {
+  --state: var(--warn);
+}
+
+.bar.degraded {
+  --state: var(--alarm);
+}
+
+.bar.offline {
+  --state: var(--bad);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.mark {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--accent);
+  transform: rotate(45deg);
+}
+
+.title {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--fg);
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--state) 45%, transparent);
+  background: color-mix(in srgb, var(--state) 10%, transparent);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--state);
+}
+
+.bar.connected .dot {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.bar.reconnecting .dot,
+.bar.offline .dot {
+  animation: blink 1s steps(2, end) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.state .text {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--state);
+}
+
+.facts {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fact {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.fact dt {
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fact dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-dim);
+}
+
+.fact.endpoint {
+  min-width: 0;
+  max-width: 34ch;
+}
+
+.fact.endpoint dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+dd.opc.connected,
+dd.link.connected {
+  color: var(--good);
+}
+
+dd.opc.reconnecting,
+dd.opc.connecting,
+dd.link.reconnecting {
+  color: var(--warn);
+}
+
+dd.opc.disconnected,
+dd.opc.faulted,
+dd.link.disconnected {
+  color: var(--bad);
+}
+
+/* Wins over the state colours above: stale information must not look live. */
+dd.opc.unknown {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.warn-fact dd {
+  color: var(--alarm);
+}
+
+.bad-fact dd {
+  color: var(--bad);
+}
+
+.backoff {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--warn);
+  min-width: 0;
+}
+
+.backoff.link-lost {
+  background: color-mix(in srgb, var(--bad) 9%, var(--panel));
+  color: var(--bad);
+}
+
+.backoff .attempt {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  flex: 0 0 auto;
+}
+
+.backoff .elapsed,
+.backoff .next {
+  flex: 0 0 auto;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.backoff .progress {
+  flex: 0 0 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.backoff .fill {
+  display: block;
+  height: 100%;
+  background: currentcolor;
+  transition: width 240ms linear;
+}
+
+.backoff .detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}

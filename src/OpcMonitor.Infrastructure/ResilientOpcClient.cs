@@ -33,16 +33,19 @@ public sealed class ResilientOpcClient
     private readonly OpcSessionFactory _sessionFactory;
     private readonly NodeResolver _nodeResolver;
     private readonly OpcSubscriptionService _subscriptions;
+    private readonly MonitoredNodeRegistry _registry;
     private readonly OpcEventChannel _events;
     private readonly OpcClientOptions _options;
     private readonly ILogger<ResilientOpcClient> _logger;
 
     private volatile ConnectionStatus _status;
+    private volatile ISession? _session;
 
     public ResilientOpcClient(
         OpcSessionFactory sessionFactory,
         NodeResolver nodeResolver,
         OpcSubscriptionService subscriptions,
+        MonitoredNodeRegistry registry,
         OpcEventChannel events,
         IOptions<OpcClientOptions> options,
         ILogger<ResilientOpcClient> logger)
@@ -50,6 +53,7 @@ public sealed class ResilientOpcClient
         _sessionFactory = sessionFactory;
         _nodeResolver = nodeResolver;
         _subscriptions = subscriptions;
+        _registry = registry;
         _events = events;
         _options = options.Value;
         _logger = logger;
@@ -57,6 +61,19 @@ public sealed class ResilientOpcClient
     }
 
     public ConnectionStatus Status => _status;
+
+    /// <summary>
+    /// The live session, or null when there is not one right now.
+    /// </summary>
+    /// <remarks>
+    /// Exposed so a request thread can browse the address space or attach a
+    /// monitored item without opening a second session — a browse and the
+    /// subscription it feeds must see the same namespace table, and two sessions
+    /// are not guaranteed to. Callers must treat null as "try again shortly" and
+    /// must expect the session to be torn down underneath them mid-call, because
+    /// the reconnect loop owns its lifetime and does not wait for readers.
+    /// </remarks>
+    public ISession? CurrentSession => _session;
 
     /// <summary>
     /// Runs until cancelled. Never throws for a connection problem — a server
@@ -80,13 +97,21 @@ public sealed class ResilientOpcClient
 
                 session = await _sessionFactory.CreateSessionAsync(cancellationToken).ConfigureAwait(false);
 
+                // Resolved from the registry, not from configuration, so nodes
+                // subscribed from the dashboard survive a reconnect instead of
+                // quietly disappearing the first time the link drops.
                 var nodes = await _nodeResolver
-                    .ResolveAsync(session, _options.Nodes, cancellationToken)
+                    .ResolveAsync(session, _registry.Snapshot(), cancellationToken)
                     .ConfigureAwait(false);
 
                 _events.Publish(new NodeSetChanged(nodes.Select(n => n.Node).ToList()));
 
                 await _subscriptions.StartAsync(session, nodes, cancellationToken).ConfigureAwait(false);
+
+                // Published only once the subscription is live. A browse issued
+                // against a session that is still being set up would race the
+                // resolver for the namespace table.
+                _session = session;
 
                 attempt = 0;
                 lastError = null;
@@ -115,6 +140,9 @@ public sealed class ResilientOpcClient
             }
             finally
             {
+                // Cleared before teardown so a request thread stops handing out a
+                // session that is about to be disposed.
+                _session = null;
                 await SafeTeardownAsync(session).ConfigureAwait(false);
             }
 

@@ -61,8 +61,11 @@ public sealed class OpcSubscriptionService : IAsyncDisposable
 
         if (nodes.Count == 0)
         {
-            _logger.LogWarning("No nodes resolved; the subscription would be empty, so none was created.");
-            return;
+            // The subscription is still created. An empty one costs the server
+            // almost nothing, and it is what <see cref="AddNodeAsync"/> attaches
+            // to — without it, unsubscribing from the last node on the dashboard
+            // would make it impossible to subscribe to a new one.
+            _logger.LogInformation("No nodes resolved; creating an empty subscription to attach to later.");
         }
 
         var subscriptionOptions = _options.Subscription;
@@ -116,6 +119,73 @@ public sealed class OpcSubscriptionService : IAsyncDisposable
             subscriptionOptions.PublishingIntervalMs, subscription.CurrentPublishingInterval);
 
         await PrimeCurrentValuesAsync(session, nodes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Attaches one more monitored item to the running subscription and primes it
+    /// with a read. Returns false when there is no live subscription to attach to.
+    /// </summary>
+    /// <remarks>
+    /// Adding to the existing subscription rather than recreating it: a rebuild
+    /// would interrupt every other node on the dashboard to add one, and the
+    /// server's own AddMonitoredItems service exists precisely so it does not
+    /// have to.
+    /// </remarks>
+    public async Task<bool> AddNodeAsync(ResolvedNode node, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        var subscription = _subscription;
+        var session = _session;
+        if (subscription is null || session is null) return false;
+
+        var item = CreateMonitoredItem(node, _options.Subscription);
+        subscription.AddItem(item);
+
+        await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        if (item.Status?.Error is { StatusCode.Code: not 0 } error)
+        {
+            // Roll back rather than leave a permanently silent item on the
+            // subscription, which would show as a card that never updates.
+            item.Notification -= OnNotification;
+            subscription.RemoveItem(item);
+            await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+
+            throw new InvalidOperationException(
+                $"Server rejected a monitored item for '{node.Node.Id}': {error}");
+        }
+
+        _logger.LogInformation("Added monitored item {NodeId} ({DisplayName}).", node.NodeId, node.Node.DisplayName);
+
+        await PrimeCurrentValuesAsync(session, [node], cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Detaches the monitored item for a configured node id. Returns false when
+    /// no such item is attached.
+    /// </summary>
+    public async Task<bool> RemoveNodeAsync(string nodeId, CancellationToken cancellationToken)
+    {
+        var subscription = _subscription;
+        if (subscription is null) return false;
+
+        var item = subscription.MonitoredItems
+            .FirstOrDefault(i => i.Handle is string handle && string.Equals(handle, nodeId, StringComparison.Ordinal));
+
+        if (item is null) return false;
+
+        // Detached first: ApplyChanges is not instantaneous, and a notification
+        // arriving mid-removal would otherwise repopulate a node the operator has
+        // just asked to stop watching.
+        item.Notification -= OnNotification;
+        subscription.RemoveItem(item);
+
+        await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("Removed monitored item {NodeId}.", nodeId);
+        return true;
     }
 
     /// <summary>
@@ -200,6 +270,8 @@ public sealed class OpcSubscriptionService : IAsyncDisposable
         IReadOnlyList<ResolvedNode> nodes,
         CancellationToken cancellationToken)
     {
+        if (nodes.Count == 0) return;
+
         var readValueIds = new ReadValueIdCollection(nodes.Select(n => new ReadValueId
         {
             NodeId = n.NodeId,

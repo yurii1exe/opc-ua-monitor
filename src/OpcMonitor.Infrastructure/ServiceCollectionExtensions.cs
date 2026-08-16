@@ -28,8 +28,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<OpcEventChannel>();
         services.AddSingleton<OpcSessionFactory>();
         services.AddSingleton<NodeResolver>();
+        services.AddSingleton<OpcBrowseService>();
+        services.AddSingleton<MonitoredNodeRegistry>();
         services.AddSingleton<OpcSubscriptionService>();
         services.AddSingleton<ResilientOpcClient>();
+        services.AddSingleton<NodeSubscriptionManager>();
 
         services.AddSingleton(sp =>
         {

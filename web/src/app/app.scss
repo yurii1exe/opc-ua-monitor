@@ -1,0 +1,84 @@
+:host {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+  min-height: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.layout.no-browser {
+  grid-template-columns: 1fr;
+}
+
+aside {
+  min-height: 0;
+  overflow: hidden;
+}
+
+main {
+  display: grid;
+  /* Toolbar, then the detail pane taking whatever is left, then the card grid at
+     its natural height. The big chart is the thing worth giving screen to: on a
+     wall display the cards answer "is anything wrong" at a glance and the trend
+     is what gets looked at for more than a second. */
+  grid-template-rows: auto minmax(180px, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ghost {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  color: var(--fg);
+  border-color: var(--line-accent);
+}
+
+.hint {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  border: 1px solid var(--line);
+  padding: 0 3px;
+  color: var(--fg-dim);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.empty {
+  margin: 0;
+  padding: 28px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 70ch;
+}

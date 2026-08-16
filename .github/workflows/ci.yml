@@ -26,10 +26,20 @@ jobs:
       # contains the pattern it is searching for. It is the only exclusion, and
       # it is a path exclusion rather than a directory one, so a forbidden
       # string in any other workflow still fails the build.
+      #
+      # `-I` skips binary files, and that is deliberate rather than a loophole.
+      # A three-letter pattern will occur by chance in any large compressed blob
+      # — the screenshots in docs/ each contain a stray "qiA" inside their
+      # DEFLATE stream — and a scan that cries wolf on every commit is a scan
+      # people learn to override. Binaries in this repository are screenshots
+      # and a GIF, and the control for those is looking at them, which is the
+      # only control that works on a rendered frame anyway. No certificate,
+      # archive or other opaque artefact is committed here; pki/ is gitignored.
       - name: Scan the working tree
         run: |
-          if grep -rniE 'qia|wro-|10\.100\.' \
+          if grep -rnIiE 'qia|wro-|10\.100\.' \
                --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj \
+               --exclude-dir=dist --exclude-dir=.angular \
                --exclude=ci.yml \
                . ; then
             echo "::error::Forbidden string found in the working tree."
@@ -39,7 +49,7 @@ jobs:
 
       - name: Scan every blob in every commit
         run: |
-          if git grep -inE 'qia|wro-|10\.100\.' $(git rev-list --all) -- ':!.github/workflows/ci.yml' ; then
+          if git grep -I -inE 'qia|wro-|10\.100\.' $(git rev-list --all) -- ':!.github/workflows/ci.yml' ; then
             echo "::error::Forbidden string found in git history."
             exit 1
           fi
@@ -73,6 +83,29 @@ jobs:
 
       - name: Test
         run: dotnet test -c Release --no-build --verbosity normal
+
+  web:
+    name: dashboard build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # `npm ci` rather than `npm install`: it fails on a lockfile that does not
+      # match package.json, which is the point of running it here.
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
 
   docker:
     name: docker build

@@ -1,0 +1,239 @@
+:host {
+  display: block;
+  min-height: 0;
+  height: 100%;
+}
+
+.panel {
+  /* Flex, not grid. The error line between the header and the tree is
+     conditional, and with fixed grid rows its absence shifted every subsequent
+     child up a row — which silently gave the `1fr` to the form at the bottom
+     instead of to the tree. Flex sizes by rule rather than by position. */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.panel > header,
+.panel > .error,
+.panel > .manual {
+  flex: 0 0 auto;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.heading {
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  color: var(--muted);
+}
+
+.ghost {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.ghost:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--line-accent);
+}
+
+.tree {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+  padding: 4px 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding-right: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: var(--panel-hi);
+}
+
+.row.monitored .label {
+  color: var(--accent);
+}
+
+.twisty {
+  flex: 0 0 12px;
+  width: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.twisty:disabled {
+  cursor: default;
+}
+
+.twisty .leaf {
+  opacity: 0.3;
+}
+
+.spin {
+  animation: blink 0.6s steps(2, end) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.kind {
+  flex: 0 0 auto;
+  font-size: 8.5px;
+  width: 11px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.kind.variable {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.peek {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.peek.bad {
+  color: var(--bad);
+}
+
+.act {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  line-height: 1;
+  font-size: 12px;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.row:not(:hover) .act:not(.drop) {
+  opacity: 0;
+}
+
+.act.add:hover {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+}
+
+.act.drop {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.act.drop:hover {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+}
+
+.error {
+  margin: 0;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--bad);
+  white-space: normal;
+}
+
+.error.nested {
+  padding-top: 0;
+  padding-bottom: 4px;
+}
+
+.manual {
+  border-top: 1px solid var(--line);
+  padding: 7px 10px 9px;
+}
+
+.manual label {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.entry {
+  display: flex;
+  gap: 5px;
+}
+
+.entry input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 3px 5px;
+}
+
+.entry input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.entry button {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.entry button:hover:not(:disabled) {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+}

@@ -92,6 +92,70 @@ public class NodeSnapshotStoreTests
     }
 
     [Fact]
+    public void AcceptsNodesAddedAfterConstruction()
+    {
+        // Subscribing from the dashboard has to make the store accept readings
+        // for a node that was not in the configuration file, otherwise the card
+        // appears and then never updates.
+        var store = CreateStore();
+        var flow = new MonitoredNode("flow", "Flow", "L/min");
+
+        Assert.False(store.Record(Reading("flow", 12.5)));
+
+        Assert.True(store.Add(flow));
+        Assert.True(store.Record(Reading("flow", 12.5)));
+        Assert.Equal(12.5, store.Get("flow")!.Current!.Value);
+        Assert.Equal(3, store.Snapshot().Count);
+    }
+
+    [Fact]
+    public void TreatsAddingAKnownNodeAsANoOpRatherThanResettingIt()
+    {
+        // Double-clicking subscribe must not wipe the history of a node that is
+        // already on screen.
+        var store = CreateStore();
+        store.Record(Reading("temp", 21.0));
+
+        Assert.False(store.Add(new MonitoredNode("temp", "Temperature renamed")));
+
+        Assert.Equal(21.0, store.Get("temp")!.Current!.Value);
+        Assert.Equal("Temperature", store.Get("temp")!.Node.DisplayName);
+    }
+
+    [Fact]
+    public void ForgetsRemovedNodesEntirely()
+    {
+        var store = CreateStore();
+        store.Record(Reading("temp", 21.0));
+
+        Assert.True(store.Remove("temp"));
+        Assert.Null(store.Get("temp"));
+        Assert.Single(store.Snapshot());
+
+        // Readings still in flight when the unsubscribe landed are dropped, not
+        // resurrected as a node nobody asked for.
+        Assert.False(store.Record(Reading("temp", 22.0)));
+        Assert.Null(store.Get("temp"));
+
+        Assert.False(store.Remove("temp"));
+    }
+
+    [Fact]
+    public void GivesAReSubscribedNodeAFreshWindow()
+    {
+        // The gap while a node was unsubscribed contains no data. Carrying the
+        // old window across would draw a line through it and imply continuity
+        // that was never observed.
+        var store = CreateStore();
+        store.Record(Reading("temp", 21.0));
+        store.Remove("temp");
+        store.Add(Temperature);
+
+        Assert.Empty(store.Get("temp")!.Window);
+        Assert.Null(store.Get("temp")!.Current);
+    }
+
+    [Fact]
     public async Task SurvivesConcurrentWritesAndReads()
     {
         // The SDK delivers notifications on its own threads while SignalR and

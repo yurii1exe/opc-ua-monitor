@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OPC UA Monitor</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+
+    <!--
+      Where the API is. Leave empty to use the origin this page was served from,
+      which is the right answer when a reverse proxy fronts both. Set it to an
+      absolute URL — e.g. http://localhost:8080 — to point a statically hosted
+      dashboard at an API somewhere else, without rebuilding the bundle.
+
+      The Angular dev server on :4200 is special-cased in code and does not need
+      this set; see src/app/core/api-base.ts.
+    -->
+    <meta name="opc-api-base" content="" />
+
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  </head>
+  <body>
+    <app-root></app-root>
+  </body>
+</html>

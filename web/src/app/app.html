@@ -1,0 +1,44 @@
+<app-status-bar />
+
+<div class="layout" [class.no-browser]="!showBrowser()">
+  @if (showBrowser()) {
+    <aside>
+      <app-browse-panel />
+    </aside>
+  }
+
+  <main>
+    <div class="toolbar">
+      <button type="button" class="ghost" (click)="toggleBrowser()">
+        {{ showBrowser() ? '◀ hide address space' : '▶ address space' }}
+      </button>
+      <span class="hint">
+        Click a card to inspect it · <kbd>+</kbd> in the tree to monitor a node · <kbd>×</kbd> on a
+        card to stop
+      </span>
+    </div>
+
+    @if (store.selected(); as selected) {
+      <app-node-detail [view]="selected" [now]="store.now()" />
+    }
+
+    @if (store.nodes().length > 0) {
+      <div class="grid">
+        @for (view of store.nodes(); track view.node.id) {
+          <app-node-card
+            [view]="view"
+            [now]="store.now()"
+            [selected]="view.node.id === store.selected()?.node?.id"
+            (pick)="store.select($event)"
+            (drop)="unsubscribe($event)"
+          />
+        }
+      </div>
+    } @else {
+      <p class="empty">
+        No nodes are being monitored. Expand the address space on the left and press
+        <kbd>+</kbd> on a variable to start.
+      </p>
+    }
+  </main>
+</div>

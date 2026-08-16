@@ -81,3 +81,36 @@ public sealed record SnapshotDto(
     ConnectionStatusDto Connection,
     IReadOnlyList<NodeStatusDto> Nodes,
     DateTimeOffset ServerTime);
+
+/// <summary>
+/// A node found while browsing, plus whether it is already being monitored — so
+/// the browser can show what is already on the dashboard rather than letting the
+/// operator add the same tag twice and wonder why nothing happened.
+/// </summary>
+public sealed record BrowsedNodeDto(
+    string NodeId,
+    string BrowseName,
+    string DisplayName,
+    string NodeClass,
+    bool IsVariable,
+    bool HasChildren,
+    bool IsMonitored,
+    string? DataType,
+    string? DisplayValue,
+    string? Quality);
+
+public sealed record BrowseResultDto(
+    string NodeId,
+    IReadOnlyList<BrowsedNodeDto> Children);
+
+/// <summary>
+/// Request to start monitoring a node. Mirrors the fields of a configured node,
+/// because a node added at runtime and a node listed in <c>appsettings.json</c>
+/// should be the same kind of thing.
+/// </summary>
+public sealed record SubscribeRequest(
+    string Address,
+    string? DisplayName = null,
+    string? Unit = null,
+    double? Minimum = null,
+    double? Maximum = null);

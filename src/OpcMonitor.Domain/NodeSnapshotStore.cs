@@ -52,6 +52,29 @@ public sealed class NodeSnapshotStore
     public NodeStatus? Get(string nodeId) =>
         _entries.TryGetValue(nodeId, out var entry) ? entry.Read() : null;
 
+    /// <summary>
+    /// Starts tracking a node, so the dashboard gets a card for it before the
+    /// first value arrives. Returns false when the node is already tracked, which
+    /// is the ordinary result of subscribing to something twice and not an error.
+    /// </summary>
+    public bool Add(MonitoredNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return _entries.TryAdd(node.Id, new Entry(node, _windowSize));
+    }
+
+    /// <summary>
+    /// Stops tracking a node and discards its window. Returns false when there
+    /// was nothing to remove.
+    /// </summary>
+    /// <remarks>
+    /// The window is dropped rather than retained. Re-subscribing to a node after
+    /// unsubscribing gives a fresh chart, which is the honest picture: the gap
+    /// while it was unsubscribed contains no data, and a chart that stitches
+    /// across it would imply continuity that was never observed.
+    /// </remarks>
+    public bool Remove(string nodeId) => _entries.TryRemove(nodeId, out _);
+
     public IReadOnlyList<NodeReading> History(string nodeId) =>
         _entries.TryGetValue(nodeId, out var entry) ? entry.Read().Window : Array.Empty<NodeReading>();
 

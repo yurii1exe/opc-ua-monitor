@@ -1,0 +1,81 @@
+/**
+ * Dark, dense, instrument-like.
+ *
+ * The palette is deliberately narrow: one accent for "this is live data", and
+ * three status colours that mean exactly one thing each — amber for out of band,
+ * yellow for stale or reconnecting, red for bad quality or a dead link. Colour
+ * is information here, so nothing decorative is allowed to use it.
+ */
+
+:root {
+  --bg: #0c0f14;
+  --panel: #12161d;
+  --panel-hi: #171d26;
+  --line: #232a35;
+  --line-accent: #2e3846;
+
+  --fg: #e6edf3;
+  --fg-dim: #b6c2cf;
+  --muted: #6e7b8b;
+
+  --accent: #58a6ff;
+  --good: #3fb950;
+  --warn: #d29922;
+  --alarm: #f0883e;
+  --bad: #f85149;
+
+  --mono: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Consolas, 'DejaVu Sans Mono', monospace;
+  --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.35;
+  -webkit-font-smoothing: antialiased;
+}
+
+app-root {
+  display: block;
+  height: 100%;
+}
+
+/* Thin scrollbars: a 16px scrollbar in a 300px panel is a lot of the panel. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-accent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-accent);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
