@@ -270,24 +270,87 @@ the problem is OPC UA or everything downstream of it.
 
 ```bash
 dotnet run --project tools/OpcMonitor.Probe -- \
+  --endpoint opc.tcp://opcuademo.sterfive.com:26543 --no-security --depth 1
+```
+
+```
+  endpoint      opc.tcp://opcuademo.sterfive.com:26543
+  applicationUri urn:localhost:OpcMonitor:Probe
+
+18:39:46 info: OpcMonitor.Infrastructure.OpcSessionFactory[0] Building OPC UA client configuration. ApplicationUri=urn:localhost:OpcMonitor:Probe PkiRoot=D:\repo\opc-ua-monitor\tools\OpcMonitor.Probe\bin\Debug\net8.0\pki
+18:39:47 info: OpcMonitor.Infrastructure.OpcSessionFactory[0] Application instance certificate ready. Subject=CN=OpcMonitorProbe, O=OpcMonitor, C=US Thumbprint=41F7DAFED0C1B332AC5155C4CB2E41201C113944 NotAfter=2028-08-13 19:00:00Z
+18:39:48 warn: OpcMonitor.Infrastructure.OpcSessionFactory[0] Connecting to opc.tcp://opcuademo.sterfive.com:26543 over an UNSECURED endpoint (SecurityMode=None). Acceptable against a simulator, never in production.
+18:39:48 info: OpcMonitor.Infrastructure.OpcSessionFactory[0] Opening session to opc.tcp://opcuademo.sterfive.com:26543/ with SecurityMode=None Policy=http://opcfoundation.org/UA/SecurityPolicy#None
+18:39:49 info: OpcMonitor.Infrastructure.OpcSessionFactory[0] Session established. SessionId=ns=1;g=aa4293bc-b740-66ed-f606-c70f908d3afc Server=urn:opcuademo.sterfive.com:NodeOPCUA-Server-for-CTT
+Connected.
+  session       OpcMonitorProbe:44180
+  server        urn:opcuademo.sterfive.com:NodeOPCUA-Server-for-CTT
+  endpoint used opc.tcp://opcuademo.sterfive.com:26543/
+  security      None / None
+  namespaces    18
+                ns=0 http://opcfoundation.org/UA/
+                ns=1 urn:opcuademo.sterfive.com:NodeOPCUA-Server-for-CTT
+                ns=2 http://opcfoundation.org/UA/DI/
+                ns=3 http://opcfoundation.org/UA/ADI/
+                ns=4 http://opcfoundation.org/UA/AutoID/
+                ns=5 http://opcfoundation.org/UA/MachineVision
+                ns=6 http://opcfoundation.org/UA/Robotics/
+                ns=7 http://opcfoundation.org/UA/CommercialKitchenEquipment/
+                ns=8 http://opcfoundation.org/UA/ISA95-JOBCONTROL_V2/
+                ns=9 http://opcfoundation.org/UA/Dictionary/IRDI
+                ns=10 http://opcfoundation.org/UA/IA/
+                ns=11 http://opcfoundation.org/UA/Machinery/
+                ns=12 http://opcfoundation.org/UA/Machinery/Jobs/
+                ns=13 http://opcfoundation.org/UA/MachineTool/
+                ns=14 http://opcfoundation.org/UA/PackML/
+                ns=15 http://opcfoundation.org/UA/WoT-Con/
+                ns=16 urn://node-opcua-simulator
+                ns=17 http://sterfive.com/UA/CoffeeMachine/
+
+Address space:
+  Locations                    i=31915
+  Server                       i=2253
+  Aliases                      i=23470
+  DeviceSet                    ns=2;i=5001
+  NetworkSet                   ns=2;i=6078
+  DeviceTopology               ns=2;i=6094
+  Machines                     ns=11;i=1001
+  PackMLObjects                ns=14;i=72
+  WoTAssetConnectionManagement ns=15;i=31
+  Simulation                   ns=16;s=SimulationFolder
+  HistoryExamples              ns=1;i=1000
+  AutoIdDemo                   ns=1;i=1738
+  PressureVessel               ns=1;i=1739
+  Tank                         ns=1;i=1755
+  MyDevices                    ns=1;i=1967
+  Matrix                       ns=1;s=Matrix                      = [1, 2, 3, 4, 5, 6, 7, 8, … (9 items)]
+  Position                     ns=1;s=Position                    = [1, 2, 3, 4]
+  Boiler#1                     ns=1;i=2061
+  Boiler#2                     ns=1;i=2107
+  FolderDemo                   ns=1;i=2289
+18:39:50 info: OpcMonitor.Infrastructure.NodeResolver[0] Resolved Server/ServerStatus/CurrentTime -> i=2258 (Server time)
+18:39:50 info: OpcMonitor.Infrastructure.NodeResolver[0] Resolved Server/ServerStatus/State -> i=2259 (Server state)
+18:39:51 info: OpcMonitor.Infrastructure.NodeResolver[0] Resolved Server/ServerStatus/StartTime -> i=2257 (Server start time)
+
+Configured nodes:
+  Server time                  = 08/16/2026 23:39:50
+  Server state                 = 0
+  Server start time            = 08/16/2026 17:24:48
+```
+
+`--no-security` goes straight to the unsecured endpoint. Without it, the probe
+tries the six secure endpoints this particular server advertises, gets a
+handshake refusal on each, logs them and arrives at the same place a few seconds
+later.
+
+Deeper, and tailing a subscription rather than reading once:
+
+```bash
+dotnet run --project tools/OpcMonitor.Probe -- \
   --endpoint opc.tcp://localhost:62541 --depth 3
 
 dotnet run --project tools/OpcMonitor.Probe -- \
   --endpoint opc.tcp://localhost:62541 --watch 15
-```
-
-```
-Connected.
-  server        urn:example:SomeServer
-  endpoint used opc.tcp://localhost:62541/
-  security      SignAndEncrypt / Basic256Sha256
-  namespaces    3
-
-Address space:
-  Server                       i=2253
-    ServiceLevel                 i=2267    = 255
-  Tank                         ns=1;i=1755
-    TankLevel                    ns=1;i=1756 = 0.19186964722980
 ```
 
 It uses the same session, resolver and subscription code as the service, so a
