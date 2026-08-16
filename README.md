@@ -115,8 +115,9 @@ Data flows one way. `OpcMonitor.Domain` has no package references at all;
 `OpcMonitor.Api` knows about HTTP and SignalR but nothing about the protocol;
 `web` knows only the wire contract.
 
-The hub pushes four messages, and the browser mirrors them in
-`web/src/app/core/api.types.ts`:
+The hub pushes four messages. `web/src/app/core/hub-client.ts` registers a
+handler for each of them; `web/src/app/core/api.types.ts` holds the shapes they
+carry:
 
 | Message | Carries |
 |---|---|
@@ -159,9 +160,12 @@ The hub pushes four messages, and the browser mirrors them in
 
 - **Certificate trust is explicit.** A self-signed application instance
   certificate is generated on first run into a gitignored `pki/` directory.
-  Accepting an untrusted server certificate is an opt-in flag, on in the compose
-  profile, and every acceptance is logged as a warning with the certificate's
-  subject and thumbprint.
+  Accepting an untrusted server certificate is a flag that defaults to off in
+  code and is turned on by the `appsettings.json` here, which applies to every
+  profile in this repository — they point at a simulator or at a public demo
+  server. Every acceptance is logged as a warning with the certificate's
+  subject and thumbprint, and a rejection logs the trusted store to copy it
+  into.
 
 - **Subscription lifetimes are computed, not guessed.** The lifetime count is
   raised to satisfy both the spec's three-keep-alive minimum and the session
@@ -294,8 +298,9 @@ tools/OpcMonitor.Probe          command-line diagnostic client
 tests/OpcMonitor.Tests          domain, endpoint policy, reconnect policy, mapping
 ```
 
-The dashboard has three dependencies in total: Angular, `@microsoft/signalr` and
-`rxjs`. There is no chart library — the trend plots are hand-drawn SVG, which is
+`web/package.json` lists eight runtime dependencies: five `@angular/*`
+packages, the `rxjs` and `tslib` those require, and `@microsoft/signalr`. There
+is no chart library — the trend plots are hand-drawn SVG, which is
 a smaller thing to own than a charting dependency used for exactly one chart
 type, and it renders identically at every size the same geometry is reused at.
 
@@ -330,9 +335,11 @@ server on 4200 (`web/src/app/core/api-base.ts`).
 
 `pki/` is generated on first run and is gitignored. Application instance
 certificates embed a hostname in their subject alternative names, and this one is
-pinned to `localhost` in configuration precisely so that it is not the machine's:
-`Opc:CertificateDomainNames` and `Opc:ApplicationUri` are both set explicitly
-rather than left to the SDK, which fills them from `Dns.GetHostName()`.
+pinned to `localhost` precisely so that it is not the machine's:
+`Opc:ApplicationUri` is set in `appsettings.json` and `Opc:CertificateDomainNames`
+defaults to `localhost` in `OpcClientOptions`, rather than either being left to
+the SDK, which fills them from `Dns.GetHostName()`. Both can be overridden in
+configuration.
 
 CI runs on pushes to `main`, on every pull request, and on demand: a secret scan
 over the working tree and the full history, restore, build, test, an

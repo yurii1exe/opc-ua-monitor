@@ -1,7 +1,7 @@
 namespace OpcMonitor.Infrastructure;
 
 /// <summary>
-/// Exponential backoff with full-width jitter, expressed as a pure function so
+/// Exponential backoff with symmetric jitter, expressed as a pure function so
 /// it can be tested without waiting for real time to pass.
 /// </summary>
 public static class ReconnectPolicy
