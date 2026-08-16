@@ -225,8 +225,9 @@ Opc__EndpointUrl=opc.tcp://192.0.2.10:4840 dotnet run --project src/OpcMonitor.A
 ```
 
 The `Remote` profile talks to a public server on the internet: it needs outbound
-TCP 26543, it can be down or busy, and it only offers an unsecured endpoint. It
-is the profile everything here has actually been verified against.
+TCP 26543, and it can be down or busy. It advertises secure endpoints that it
+then refuses at the handshake, so `UseSecurity` is false in that profile and the
+client connects over the unsecured one.
 
 The dashboard's own idea of where the API is follows the same principle. It is
 read at runtime from one line of `index.html`:
