@@ -78,10 +78,11 @@ public sealed class OpcClientOptions
 
     /// <summary>
     /// Trust the server's certificate without it being in the trusted store.
-    /// <b>Development only.</b> True in the Compose profile so the reference
-    /// server works on first run with no manual certificate exchange; the
-    /// accepted certificate's subject and thumbprint are logged every time so
-    /// the trust decision is never silent.
+    /// <b>Development only.</b> Off here and turned on by the appsettings.json
+    /// files in this repository, whose endpoints are a simulator and a public
+    /// demo server, so a fresh clone connects without a manual certificate
+    /// exchange; the accepted certificate's subject and thumbprint are logged
+    /// every time so the trust decision is never silent.
     /// </summary>
     public bool AcceptUntrustedServerCertificate { get; set; } = false;
 
