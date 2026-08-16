@@ -266,48 +266,84 @@ public sealed class OpcSessionFactory
         var endpointConfiguration = EndpointConfiguration.Create(configuration);
         endpointConfiguration.OperationTimeout = _options.OperationTimeoutMs;
 
-        var description = await SelectEndpointAsync(configuration, endpointConfiguration, requestedUrl, cancellationToken)
+        var candidates = await SelectEndpointsAsync(configuration, endpointConfiguration, requestedUrl, cancellationToken)
             .ConfigureAwait(false);
-
-        var endpoint = new ConfiguredEndpoint(null, description, endpointConfiguration);
-
-        _logger.LogInformation(
-            "Opening session to {EndpointUrl} with SecurityMode={SecurityMode} Policy={SecurityPolicy}",
-            description.EndpointUrl, description.SecurityMode, description.SecurityPolicyUri);
 
         var sessionFactory = new DefaultSessionFactory(_telemetry);
 
-        var session = await sessionFactory.CreateAsync(
-            configuration: configuration,
-            endpoint: endpoint,
-            // false: do not re-fetch endpoints from the server on connect. Doing
-            // so would discard the endpoint URL selected above and replace it
-            // with the server-advertised one, undoing the container fix.
-            updateBeforeConnect: false,
-            // false: the server's certificate is issued for its own hostname,
-            // which will not match the name the client used inside Compose. The
-            // certificate is still validated; only the domain check is relaxed.
-            checkDomain: false,
-            sessionName: $"{_options.ApplicationName}:{Environment.ProcessId}",
-            sessionTimeout: _options.SessionTimeoutMs,
-            identity: new UserIdentity(),
-            preferredLocales: null,
-            ct: cancellationToken).ConfigureAwait(false);
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            var description = candidates[index];
 
-        session.KeepAliveInterval = _options.KeepAliveIntervalMs;
+            if (description.SecurityMode == MessageSecurityMode.None)
+            {
+                _logger.LogWarning(
+                    "Connecting to {Url} over an UNSECURED endpoint (SecurityMode=None). Acceptable against a simulator, never in production.",
+                    requestedUrl);
+            }
 
-        _logger.LogInformation(
-            "Session established. SessionId={SessionId} Server={ServerUri}",
-            session.SessionId, session.ConfiguredEndpoint?.Description?.Server?.ApplicationUri);
+            _logger.LogInformation(
+                "Opening session to {EndpointUrl} with SecurityMode={SecurityMode} Policy={SecurityPolicy}",
+                description.EndpointUrl, description.SecurityMode, description.SecurityPolicyUri);
 
-        return session;
+            var endpoint = new ConfiguredEndpoint(null, description, endpointConfiguration);
+
+            ISession session;
+
+            try
+            {
+                session = await sessionFactory.CreateAsync(
+                    configuration: configuration,
+                    endpoint: endpoint,
+                    // false: do not re-fetch endpoints from the server on connect. Doing
+                    // so would discard the endpoint URL selected above and replace it
+                    // with the server-advertised one, undoing the container fix.
+                    updateBeforeConnect: false,
+                    // false: the server's certificate is issued for its own hostname,
+                    // which will not match the name the client used inside Compose. The
+                    // certificate is still validated; only the domain check is relaxed.
+                    checkDomain: false,
+                    sessionName: $"{_options.ApplicationName}:{Environment.ProcessId}",
+                    sessionTimeout: _options.SessionTimeoutMs,
+                    identity: new UserIdentity(),
+                    preferredLocales: null,
+                    ct: cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && index + 1 < candidates.Count)
+            {
+                // Whether a policy works is only known at channel open: a server
+                // can advertise one its deployment then refuses, because the
+                // client certificate is not registered with it or because one
+                // side does not implement the algorithm. That arrives after
+                // endpoint selection, so the only way to act on it is to try the
+                // next endpoint the server offered. The list is ordered
+                // strongest-first and contains only endpoints the configuration
+                // already permits.
+                _logger.LogWarning(
+                    ex,
+                    "Endpoint {EndpointUrl} (SecurityMode={SecurityMode} Policy={SecurityPolicy}) did not complete a handshake: {Message} "
+                        + "Trying the next endpoint this server offers.",
+                    description.EndpointUrl, description.SecurityMode, description.SecurityPolicyUri, ex.Message);
+                continue;
+            }
+
+            session.KeepAliveInterval = _options.KeepAliveIntervalMs;
+
+            _logger.LogInformation(
+                "Session established. SessionId={SessionId} Server={ServerUri}",
+                session.SessionId, session.ConfiguredEndpoint?.Description?.Server?.ApplicationUri);
+
+            return session;
+        }
+
+        throw new InvalidOperationException($"Server at {requestedUrl} offers no usable endpoint.");
     }
 
     /// <summary>
-    /// Discovers the server's endpoints and picks one according to the
-    /// configured security preference.
+    /// Discovers the server's endpoints and returns those the configuration
+    /// permits, in the order they should be tried: strongest security first.
     /// </summary>
-    public async Task<EndpointDescription> SelectEndpointAsync(
+    public async Task<IReadOnlyList<EndpointDescription>> SelectEndpointsAsync(
         ApplicationConfiguration configuration,
         EndpointConfiguration endpointConfiguration,
         string requestedUrl,
@@ -337,21 +373,22 @@ public sealed class OpcSessionFactory
 
         _logger.LogDebug("Discovery returned {Count} endpoint(s) from {Url}", endpoints.Count, requestedUrl);
 
-        var selected = ChooseEndpoint(endpoints, _options.UseSecurity, _options.AllowNoSecurityFallback)
-            ?? throw new InvalidOperationException(
+        var ranked = RankEndpoints(endpoints, _options.UseSecurity, _options.AllowNoSecurityFallback);
+
+        if (ranked.Count == 0)
+        {
+            throw new InvalidOperationException(
                 _options.UseSecurity && !_options.AllowNoSecurityFallback
                     ? $"Server at {requestedUrl} offers no secure endpoint and Opc:AllowNoSecurityFallback is disabled."
                     : $"Server at {requestedUrl} offers no usable endpoint.");
-
-        if (selected.SecurityMode == MessageSecurityMode.None)
-        {
-            _logger.LogWarning(
-                "Connecting to {Url} over an UNSECURED endpoint (SecurityMode=None). Acceptable against a simulator, never in production.",
-                requestedUrl);
         }
 
-        ApplyEndpointUrlPolicy(selected, requestedUrl);
-        return selected;
+        foreach (var candidate in ranked)
+        {
+            ApplyEndpointUrlPolicy(candidate, requestedUrl);
+        }
+
+        return ranked;
     }
 
     /// <summary>
@@ -388,13 +425,19 @@ public sealed class OpcSessionFactory
     }
 
     /// <summary>
-    /// Endpoint preference: the highest SecurityLevel the server offers, falling
-    /// back to an unsecured endpoint only when permitted. SecurityLevel is the
-    /// server's own relative ranking of its endpoints (Part 4, §7.10), which is
-    /// a better signal than hardcoding a policy URI preference list that goes
-    /// stale as policies are deprecated.
+    /// Endpoint preference, strongest first: secure endpoints ordered by the
+    /// server's own SecurityLevel (Part 4, §7.10), which is a better signal than
+    /// hardcoding a policy URI preference list that goes stale as policies are
+    /// deprecated, followed by the unsecured endpoint where that is permitted.
     /// </summary>
-    internal static EndpointDescription? ChooseEndpoint(
+    /// <remarks>
+    /// An ordered list rather than a single choice, because whether a policy
+    /// works is only known at channel open. Every entry is one the configuration
+    /// permits, so falling through the list never connects less securely than
+    /// <see cref="OpcClientOptions.UseSecurity"/> and
+    /// <see cref="OpcClientOptions.AllowNoSecurityFallback"/> already allow.
+    /// </remarks>
+    internal static IReadOnlyList<EndpointDescription> RankEndpoints(
         IReadOnlyCollection<EndpointDescription> endpoints,
         bool useSecurity,
         bool allowNoSecurityFallback)
@@ -412,19 +455,19 @@ public sealed class OpcSessionFactory
         var secure = candidates
             .Where(e => e.SecurityMode != MessageSecurityMode.None)
             .OrderByDescending(e => e.SecurityLevel)
-            .FirstOrDefault();
+            .ToList();
 
         var insecure = candidates
             .Where(e => e.SecurityMode == MessageSecurityMode.None)
             .OrderByDescending(e => e.SecurityLevel)
-            .FirstOrDefault();
+            .ToList();
 
         if (useSecurity)
         {
-            return secure ?? (allowNoSecurityFallback ? insecure : null);
+            return allowNoSecurityFallback ? [.. secure, .. insecure] : secure;
         }
 
-        return insecure ?? secure;
+        return [.. insecure, .. secure];
     }
 
     private static string ResolvePkiRoot(string pkiRoot) =>

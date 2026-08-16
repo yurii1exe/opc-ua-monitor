@@ -141,6 +141,15 @@ carry:
   rather than a subscription-transfer fast path plus a rebuild fallback that is
   the least-tested code in the system.
 
+- **The security policy is settled by trying it.** The client ranks the
+  endpoints a server advertises strongest-first and opens a session on the first
+  that completes a handshake. A server can advertise a policy its deployment then
+  refuses — an unregistered client certificate, or an algorithm one side does not
+  implement — and that only surfaces at channel open, after the endpoint has been
+  chosen. Each failed policy is logged. The unsecured endpoint is in the list
+  only when `Opc:AllowNoSecurityFallback` allows it, and connecting over it logs
+  a warning of its own.
+
 - **Current values on resubscribe.** A data-change subscription reports changes,
   so a node that is stable when you attach reports nothing until it happens to
   move. Every subscribe is followed by an explicit read of all monitored nodes,
