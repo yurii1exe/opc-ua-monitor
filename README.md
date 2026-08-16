@@ -23,7 +23,7 @@ git clone https://github.com/<you>/opc-ua-monitor
 cd opc-ua-monitor
 
 # terminal 1 — the service
-dotnet run --project src/OpcMonitor.Api --environment Remote
+ASPNETCORE_ENVIRONMENT=Remote dotnet run --project src/OpcMonitor.Api
 
 # terminal 2 — the dashboard
 cd web && npm ci && npm start
@@ -202,7 +202,7 @@ The endpoint is configuration. Three profiles ship with the API:
 | `Remote` | `opc.tcp://opcuademo.sterfive.com:26543` | public demo server, no Docker at all |
 
 ```bash
-dotnet run --project src/OpcMonitor.Api --environment Remote
+ASPNETCORE_ENVIRONMENT=Remote dotnet run --project src/OpcMonitor.Api
 ```
 
 Or override anything without touching a file:
@@ -311,7 +311,7 @@ dotnet build -c Release
 dotnet test
 
 # run the API against the public demo server, no Docker needed
-dotnet run --project src/OpcMonitor.Api --environment Remote
+ASPNETCORE_ENVIRONMENT=Remote dotnet run --project src/OpcMonitor.Api
 
 # the dashboard, with live reload
 cd web && npm ci && npm start
