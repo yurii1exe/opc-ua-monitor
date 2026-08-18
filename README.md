@@ -420,6 +420,28 @@ over the working tree and the full history, restore, build, test, an
 
 ---
 
+## Demo media
+
+The recording and the three screenshots used above are held in `docs/`.
+
+| File | What it shows | Published as |
+|---|---|---|
+| `docs/live.gif` | 1000×569, 12s. Five subscribed nodes updating as the server reports data changes, each value carrying its source timestamp, quality and age | `live.mp4`, `live.webm`, the poster `live.webp` |
+| `docs/dashboard.png` | 3200×1900. The browsed address space beside the selected node's trend chart, and one card per monitored node | `dashboard.webp` |
+| `docs/reconnecting.png` | 3200×1900. The OPC session dropped — attempt count, elapsed wait, the server's own error and the countdown to the next retry | `reconnecting.webp` |
+| `docs/link-lost.png` | 3200×1900. The dashboard's own socket dropped — the last values held and labelled as held rather than blanked | `link-lost.webp` |
+
+The published files live in the site repository under
+`TheSite/ClientApp/src/assets/portfolio/opc-ua-monitor/`, with the card thumbnail
+`opc-ua-monitor.webp` one directory above. Each is produced from the files above with ffmpeg —
+mp4 and webm per recording, a webp poster beside them, webp for each still — so this repository
+stays the source of truth and the derivatives are regenerated rather than edited.
+
+They feed the `opc-ua-monitor` entry on disit.tech/work, whose case study is at
+`/services/software-development/opc-ua-monitor`.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
